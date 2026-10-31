@@ -1,0 +1,33 @@
+<p><b>Irodori Audio</b> creates natural-sounding Japanese sentence audio for your cards, locally on your own computer, with <a href="https://github.com/Aratako/Irodori-TTS">Irodori-TTS</a>. It is a more human-sounding alternative to VOICEVOX, with female and male voices and emotions.</p>
+
+<h3>Features</h3>
+<ul>
+<li>Browser menu: <i>Cards &gt; Generate Sentence Audio (Irodori)</i>. Reads <code>Sentence</code> and writes <code>SentenceAudio</code> (field names are configurable).</li>
+<li>6 voices (3 female, 3 male) and 7 emotions: neutral, happy, sad, angry, scared, whisper, joking.</li>
+<li>Voice and emotion are chosen automatically by simple rules (speech style such as 俺, ぼく, だぜ, わよ, keywords, punctuation). No extra AI model needed.</li>
+<li>Safe: recorded audio is never replaced, <code>Sentence</code> is never changed, old files are kept, one undo reverts a run, and nothing changes if the server is down.</li>
+<li>Background generation with progress and cancel. Notes that get audio are tagged <code>irodori</code>.</li>
+</ul>
+
+<h3>You run the Irodori server yourself</h3>
+<p>The add-on only talks to a server on your own computer. Everything stays local.</p>
+<ol>
+<li>Requirements: NVIDIA GPU with about 6 GB free VRAM (CPU works but is slow), git, <a href="https://docs.astral.sh/uv/">uv</a> and ffmpeg.</li>
+<li><code>git clone https://github.com/Aratako/Irodori-TTS-Server.git</code>. In that folder run <code>uv sync --extra cu128</code> (use <code>--extra cpu</code> without a GPU) and copy <code>.env.example</code> to <code>.env</code>.</li>
+<li>In <code>.env</code> set <code>IRODORI_HOST=127.0.0.1</code> and <code>IRODORI_HF_CHECKPOINT=Aratako/Irodori-TTS-v4-Small</code>.</li>
+<li>Download the six reference voice files (<code>voices/*.wav</code>) from the GitHub page and put them in the server's <code>voices</code> folder.</li>
+<li>Start: <code>uv run --no-sync python -m irodori_openai_tts --host 127.0.0.1 --port 8088</code>. The first start downloads the model.</li>
+<li>Restart Anki, select a few notes in the browser and run the menu item. Listen before running it on many notes.</li>
+</ol>
+<p>Full instructions: <a href="https://github.com/mattias/anki-irodori-audio">github.com/mattias/anki-irodori-audio</a>. The six voice files are in the <a href="https://github.com/mattias/anki-irodori-audio/tree/main/voices">voices folder</a> (download each .wav, or download the whole repository as a zip). Bug reports and questions: <a href="https://github.com/mattias/anki-irodori-audio/issues">GitHub issues</a>.</p>
+
+<h3>Good to know</h3>
+<ul>
+<li>Pronunciation cannot be corrected (there is no kana input). Rare names and unusual readings may be wrong, so listen first.</li>
+<li>Laughs and breaths are not guaranteed. The add-on regenerates clips that run far too long (a stray cry after the sentence).</li>
+<li>Whisper is the least reliable emotion.</li>
+<li>About 0.9 s per sentence on an RTX 4080.</li>
+<li>Do not use real people's voices as references. The model's terms forbid it. The bundled voices were created by the model's own Voice Design.</li>
+</ul>
+
+<p>Credits: <a href="https://github.com/Aratako/Irodori-TTS">Irodori-TTS</a> and <a href="https://github.com/Aratako/Irodori-TTS-Server">Irodori-TTS-Server</a> by Aratako (MIT, see the <a href="https://huggingface.co/Aratako/Irodori-TTS-v4-Small">model card</a> for usage restrictions). Add-on code: MIT.</p>

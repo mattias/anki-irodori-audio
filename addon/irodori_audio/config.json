@@ -1,0 +1,61 @@
+{
+  "SERVER_URL": "http://127.0.0.1:8088",
+  "MODEL": "irodori-tts",
+  "SOURCE_FIELD": "Sentence",
+  "TARGET_FIELD": "SentenceAudio",
+  "AUDIO_FORMAT": "mp3",
+  "SEED": 7,
+  "OVERWRITE": false,
+  "TAG": "irodori",
+  "TIMEOUT_SECONDS": 120,
+  "RETRIES": 2,
+  "MAX_SECONDS_PER_CHAR": 0.18,
+  "MAX_SECONDS_BASE": 0.6,
+  "VOICES": {
+    "female_calm": {
+      "gender": "f",
+      "voice": "female_calm",
+      "caption": "落ち着いた、近い距離感の女性話者"
+    },
+    "female_bright": {
+      "gender": "f",
+      "voice": "female_bright",
+      "caption": "明るく元気な、若い女の子の声"
+    },
+    "female_cool": {
+      "gender": "f",
+      "voice": "female_cool",
+      "caption": "クールで大人っぽい、少し低めの女性の声"
+    },
+    "male_calm": {
+      "gender": "m",
+      "voice": "male_calm",
+      "caption": "落ち着いた、近い距離感の男性話者"
+    },
+    "male_young": {
+      "gender": "m",
+      "voice": "male_young",
+      "caption": "明るく元気な、若い男の子の声"
+    },
+    "male_deep": {
+      "gender": "m",
+      "voice": "male_deep",
+      "caption": "低くて渋い、年配の男性の声"
+    }
+  },
+  "EMOTION_CAPTIONS": {
+    "neutral": "",
+    "happy": "嬉しそうに、楽しげに",
+    "sad": "悲しげに、沈んだ声で",
+    "angry": "怒りを込めて",
+    "scared": "恐怖で声が震え、息が乱れている",
+    "whisper": "囁き声で、息多めに",
+    "joking": "からかうように、冗談っぽく"
+  },
+  "EMOTION_TEXT_WRAP": {
+    "whisper": [
+      "🤫",
+      "…"
+    ]
+  }
+}
