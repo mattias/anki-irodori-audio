@@ -46,7 +46,7 @@ Measured on an RTX 4080: about 0.9 s per sentence and 4-5 GB of VRAM.
 
 ## 2. Install the add-on
 
-Install from AnkiWeb (code: _to be added_), download `irodori_audio.ankiaddon` from the [releases page](https://github.com/mattias/anki-irodori-audio/releases) and open it with Anki, or copy `addon/irodori_audio/` into your Anki `addons21` folder. Restart Anki.
+Install from [AnkiWeb](https://ankiweb.net/shared/info/2078760911) (code: `2078760911`), download `irodori_audio.ankiaddon` from the [releases page](https://github.com/mattias/anki-irodori-audio/releases) and open it with Anki, or copy `addon/irodori_audio/` into your Anki `addons21` folder. Restart Anki.
 
 ## 3. Use it
 
