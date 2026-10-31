@@ -2,7 +2,7 @@
 
 An Anki add-on that creates natural-sounding Japanese **sentence audio** with [Irodori-TTS](https://github.com/Aratako/Irodori-TTS), running on your own computer. It picks a female or male voice and an emotion for every sentence, writes the audio to your `SentenceAudio` field, and never touches recorded audio.
 
-Tested with the Kiku note type (fields `Sentence` and `SentenceAudio`), Anki 25.x, Windows 11 and an NVIDIA RTX 4080.
+Tested with the Kiku note type (fields `Sentence` and `SentenceAudio`), Anki 26.9.3, Windows 11 and an NVIDIA RTX 4080.
 
 ## What it does
 
