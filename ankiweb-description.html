@@ -1,32 +1,50 @@
-<p><b>Irodori Audio</b> creates natural-sounding Japanese sentence audio for your cards, locally on your own computer, with <a href="https://github.com/Aratako/Irodori-TTS">Irodori-TTS</a>. It is a more human-sounding alternative to VOICEVOX, with female and male voices and emotions.</p>
+<p><b>Irodori Audio</b> creates natural-sounding Japanese sentence audio for your cards, locally on your own computer, with <a href="https://github.com/Aratako/Irodori-TTS">Irodori-TTS</a>. It is a more human-sounding alternative to VOICEVOX, with female and male voices and emotions. Good for mining from books and manga, where you otherwise get a flat, robotic voice.</p>
 
 <h3>Features</h3>
 <ul>
 <li>Browser menu: <i>Cards &gt; Generate Sentence Audio (Irodori)</i>. Reads <code>Sentence</code> and writes <code>SentenceAudio</code> (field names are configurable).</li>
 <li>6 voices (3 female, 3 male) and 7 emotions: neutral, happy, sad, angry, scared, whisper, joking.</li>
-<li>Voice and emotion are chosen automatically by simple rules (speech style such as 俺, ぼく, だぜ, わよ, keywords, punctuation). No extra AI model needed.</li>
+<li>Male or female voice and emotion are chosen automatically by simple rules (speech style such as 俺, ぼく, だぜ, わよ, keywords, punctuation). No extra AI model needed.</li>
 <li>Safe: recorded audio is never replaced, <code>Sentence</code> is never changed, old files are kept, one undo reverts a run, and nothing changes if the server is down.</li>
 <li>Background generation with progress and cancel. Notes that get audio are tagged <code>irodori</code>.</li>
 </ul>
 
-<h3>You run the Irodori server yourself</h3>
-<p>The add-on only talks to a server on your own computer. Everything stays local.</p>
+<h3>Setup (Windows, about 15 minutes, 10 GB disk)</h3>
+<p>The add-on talks to a server that runs on your own computer. Everything stays local. You need an NVIDIA GPU with about 6 GB of free VRAM (CPU works but is slow).</p>
 <ol>
-<li>Requirements: NVIDIA GPU with about 6 GB free VRAM (CPU works but is slow), git, <a href="https://docs.astral.sh/uv/">uv</a> and ffmpeg.</li>
-<li><code>git clone https://github.com/Aratako/Irodori-TTS-Server.git</code>. In that folder run <code>uv sync --extra cu128</code> (use <code>--extra cpu</code> without a GPU) and copy <code>.env.example</code> to <code>.env</code>.</li>
-<li>In <code>.env</code> set <code>IRODORI_HOST=127.0.0.1</code> and <code>IRODORI_HF_CHECKPOINT=Aratako/Irodori-TTS-v4-Small</code>.</li>
-<li>Download the six reference voice files (<code>voices/*.wav</code>) from the GitHub page and put them in the server's <code>voices</code> folder.</li>
-<li>Start: <code>uv run --no-sync python -m irodori_openai_tts --host 127.0.0.1 --port 8088</code>. The first start downloads the model.</li>
-<li>Restart Anki, select a few notes in the browser and run the menu item. Listen before running it on many notes.</li>
+<li><b>Install the tools.</b> Open PowerShell, run the three commands below, then close PowerShell and open a new window:<br>
+<code>winget install --id Git.Git -e</code><br>
+<code>winget install --id astral-sh.uv -e</code><br>
+<code>winget install --id Gyan.FFmpeg -e</code></li>
+<li><b>Set up the server.</b> In the new PowerShell window:<br>
+<code>cd $HOME</code><br>
+<code>git clone https://github.com/Aratako/Irodori-TTS-Server.git</code><br>
+<code>git clone https://github.com/mattias/anki-irodori-audio.git</code><br>
+<code>cd Irodori-TTS-Server</code><br>
+<code>uv sync --extra cu128</code> (about 5 GB, takes a few minutes; use <code>--extra cpu</code> without an NVIDIA GPU)<br>
+<code>Copy-Item ..\anki-irodori-audio\voices\*.wav voices\</code> (copies the six voice files the add-on needs)</li>
+<li><b>Start the server</b> (in the same folder, and leave the window open):<br>
+<code>uv run --no-sync python -m irodori_openai_tts --host 127.0.0.1 --port 8088</code><br>
+Open <a href="http://127.0.0.1:8088/health">http://127.0.0.1:8088/health</a> in a browser. It should say <code>"status":"ok"</code>.</li>
+<li><b>Restart Anki</b>, select 3-5 notes in the browser and run <i>Cards &gt; Generate Sentence Audio (Irodori)</i>. The first sentence downloads and loads the model (about 3 GB, one to several minutes). After that it takes about 1 second per sentence. Listen before running it on many notes.</li>
 </ol>
-<p>Full instructions: <a href="https://github.com/mattias/anki-irodori-audio">github.com/mattias/anki-irodori-audio</a>. The six voice files are in the <a href="https://github.com/mattias/anki-irodori-audio/tree/main/voices">voices folder</a> (download each .wav, or download the whole repository as a zip). Bug reports and questions: <a href="https://github.com/mattias/anki-irodori-audio/issues">GitHub issues</a>.</p>
+<p><b>Every time you restart your computer</b>, start the server again: open PowerShell, run <code>cd $HOME\Irodori-TTS-Server</code>, then the command in step 3. The server only runs while its window is open.</p>
+
+<h3>Troubleshooting</h3>
+<ul>
+<li><b>"The Irodori server is not responding":</b> the server is not running. Start it (step 3).</li>
+<li><b><code>No module named irodori_openai_tts</code>:</b> you are in the wrong folder. Run <code>cd $HOME\Irodori-TTS-Server</code> first.</li>
+<li><b>"not recognized" for git, uv or ffmpeg:</b> close PowerShell and open a new window after installing.</li>
+<li><b>First note takes minutes:</b> the model is downloading and loading. Watch the server window.</li>
+<li><b>Notes are skipped:</b> notes with recorded audio are never replaced. Check that the field names in the add-on config match your note type.</li>
+</ul>
+<p>Full instructions (Linux/macOS, AMD, more troubleshooting): <a href="https://github.com/mattias/anki-irodori-audio">github.com/mattias/anki-irodori-audio</a>. Bug reports and questions: <a href="https://github.com/mattias/anki-irodori-audio/issues">GitHub issues</a>.</p>
 
 <h3>Good to know</h3>
 <ul>
 <li>Pronunciation cannot be corrected (there is no kana input). Rare names and unusual readings may be wrong, so listen first.</li>
 <li>Laughs and breaths are not guaranteed. The add-on regenerates clips that run far too long (a stray cry after the sentence).</li>
 <li>Whisper is the least reliable emotion.</li>
-<li>About 0.9 s per sentence on an RTX 4080.</li>
 <li>Do not use real people's voices as references. The model's terms forbid it. The bundled voices were created by the model's own Voice Design.</li>
 </ul>
 

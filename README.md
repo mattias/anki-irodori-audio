@@ -12,50 +12,89 @@ Tested with the Kiku note type (fields `Sentence` and `SentenceAudio`), Anki 26.
 - Safe by default: notes with recorded audio are skipped, your `Sentence` field is never changed, old audio files are kept, and a whole run can be undone with *Edit > Undo*. Nothing changes if the server is down.
 - Runs in the background with progress and a cancel button.
 
-## 1. Run the Irodori server locally
+## Quick start (Windows)
 
-You need an NVIDIA GPU with about 6 GB of free VRAM (CPU works but is slow), [uv](https://docs.astral.sh/uv/), git and ffmpeg (for mp3).
+Four steps: install the tools, set up the server, install the add-on, generate audio. Allow about 15 minutes and 10 GB of disk space. Everything runs on your own computer.
 
-```bash
+### What you need
+
+- Windows 10/11 with an **NVIDIA GPU** (about 6 GB of free VRAM, a recent driver). Without a GPU it works on the CPU, but slowly (see "No NVIDIA GPU" below).
+- Anki 2.1.50 or newer (tested on 26.9.3) and a note type with a sentence field and an audio field (default names: `Sentence` and `SentenceAudio`, as in Kiku).
+
+### 1. Install the tools
+
+Open **PowerShell** and run these three commands (answer yes if asked), then **close PowerShell and open a new one** so the tools are found:
+
+```powershell
+winget install --id Git.Git -e
+winget install --id astral-sh.uv -e
+winget install --id Gyan.FFmpeg -e
+```
+
+Check: `git --version`, `uv --version` and `ffmpeg -version` should each print a version.
+
+### 2. Set up the Irodori server
+
+In the new PowerShell window:
+
+```powershell
+cd $HOME
 git clone https://github.com/Aratako/Irodori-TTS-Server.git
+git clone https://github.com/mattias/anki-irodori-audio.git
 cd Irodori-TTS-Server
-uv sync --extra cu128          # NVIDIA CUDA 12.8. Use --extra cpu for CPU only
-cp .env.example .env
+uv sync --extra cu128
+Copy-Item ..\anki-irodori-audio\voices\*.wav voices\
 ```
 
-Edit `.env`:
+`uv sync` downloads about 5 GB (PyTorch with CUDA) and takes a few minutes. The last line copies the six voice files (`female_calm`, `female_bright`, `female_cool`, `male_calm`, `male_young`, `male_deep`) into the server. The add-on needs exactly these names.
 
-```
-IRODORI_HOST=127.0.0.1
-IRODORI_HF_CHECKPOINT=Aratako/Irodori-TTS-v4-Small
-```
+### 3. Start the server
 
-Leave `IRODORI_DEFAULT_NUM_STEPS` unset. Keep the host on `127.0.0.1` so other computers cannot reach the server.
+Still in the `Irodori-TTS-Server` folder:
 
-Copy the six `.wav` files from this repo's `voices/` folder into `Irodori-TTS-Server/voices/`. Their names (`female_calm`, `female_bright`, `female_cool`, `male_calm`, `male_young`, `male_deep`) are the voice ids the add-on uses.
-
-Start the server (the first request downloads the model, about a minute):
-
-```bash
+```powershell
 uv run --no-sync python -m irodori_openai_tts --host 127.0.0.1 --port 8088
 ```
 
-Or use `server/start-irodori.ps1 -ServerDir <your Irodori-TTS-Server folder>` (Windows) or `server/start-irodori.sh <folder>` (Linux/macOS), or copy the script into the server folder and run it there. Check it at <http://127.0.0.1:8088/health>.
+Leave this window open. The server only runs while it is open, so **start it again like this every time you have restarted the computer** and want to generate audio (open PowerShell, then `cd $HOME\Irodori-TTS-Server`, then the command above).
 
-Measured on an RTX 4080: about 0.9 s per sentence and 4-5 GB of VRAM.
+Check that it works: open <http://127.0.0.1:8088/health> in a browser. You should see `"status":"ok"`. The very first sentence you generate downloads the model (about 3 GB) and loads it, which takes one to several minutes. After that it is fast (about 1 s per sentence on an RTX 4080, 4-5 GB of VRAM).
 
-## 2. Install the add-on
+`--host 127.0.0.1` keeps the server reachable only from your own computer. Do not change it to `0.0.0.0`.
 
-Install from [AnkiWeb](https://ankiweb.net/shared/info/2078760911) (code: `2078760911`), download `irodori_audio.ankiaddon` from the [releases page](https://github.com/mattias/anki-irodori-audio/releases) and open it with Anki, or copy `addon/irodori_audio/` into your Anki `addons21` folder. Restart Anki.
+### 4. Install the add-on
 
-## 3. Use it
+In Anki: *Tools > Add-ons > Get Add-ons...*, paste the code `2078760911`, click OK and restart Anki. ([AnkiWeb page](https://ankiweb.net/shared/info/2078760911).) You can also download `irodori_audio.ankiaddon` from the [releases page](https://github.com/mattias/anki-irodori-audio/releases) and open it with Anki.
 
-1. Start the server.
-2. In the card browser, select a few notes and listen to the result first.
-3. **Cards > Generate Sentence Audio (Irodori)**. A dialog shows how many notes get audio and how many are skipped.
-4. Notes with new audio get the tag `irodori`.
+### 5. Generate audio
+
+1. Make sure the server is running (step 3).
+2. In the card browser, select **3-5 notes** first and run **Cards > Generate Sentence Audio (Irodori)**. A dialog shows how many notes get audio and how many are skipped. Confirm.
+3. The first run is slow because the model loads (see step 3). Listen to the result. If you like it, select more notes.
+4. Notes with new audio get the tag `irodori`. *Edit > Undo* reverts a whole run.
 
 Settings are in *Tools > Add-ons > Irodori Audio > Config*: field names, audio format, overwrite behavior, voices and emotion captions.
+
+### Other systems
+
+- **No NVIDIA GPU:** use `uv sync --extra cpu` instead of `--extra cu128`. It works but is much slower (many seconds per sentence), so try a few notes first.
+- **AMD GPU on Linux:** `uv sync --extra rocm`.
+- **Linux/macOS:** install git, uv and ffmpeg with your package manager (for example `brew install git uv ffmpeg`) and run the same commands. On a Mac without CUDA use `--extra cpu`. Untested by me.
+- **Starting with a script:** `server/start-irodori.ps1 -ServerDir <your Irodori-TTS-Server folder>` (Windows) or `server/start-irodori.sh <folder>` (Linux/macOS) runs the same start command.
+
+## Troubleshooting
+
+| Problem | What to do |
+|---|---|
+| "The Irodori server is not responding" | The server is not running. Start it (step 3) and check <http://127.0.0.1:8088/health>. |
+| `No module named irodori_openai_tts` | You are in the wrong folder. Run `cd $HOME\Irodori-TTS-Server` first. |
+| `uv`, `git` or `ffmpeg` "is not recognized" | Close PowerShell and open a new window after installing. If it still fails, restart the computer. |
+| The first note takes minutes or the dialog seems stuck | The model is downloading and loading the first time. Watch the server window. Next time it is fast. |
+| Error about ffmpeg in the server window | ffmpeg is not found by the server. Reopen PowerShell, check `ffmpeg -version`, restart the server. Or set `AUDIO_FORMAT` to `wav` in the add-on config (bigger files). |
+| "CUDA out of memory" or the server crashes | Close other GPU programs (games, other AI tools) or use `--extra cpu`. |
+| Notes are skipped | Notes that already have recorded audio are never replaced. The dialog shows the reasons. Check that the field names in the config match your note type. |
+| The voice reads a name or word wrongly | Pronunciation cannot be corrected. Leave that note alone or keep your own audio. |
+| Port 8088 is already in use | Another server is running. Close it, or use another port in both the start command and the add-on config (`SERVER_URL`). |
 
 ## Tips and known limits
 
