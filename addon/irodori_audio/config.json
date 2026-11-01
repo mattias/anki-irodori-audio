@@ -1,5 +1,8 @@
 {
   "SERVER_URL": "http://127.0.0.1:8088",
+  "SERVER_DIR": "",
+  "AUTO_START_SERVER": true,
+  "ONBOARDING_SHOWN": false,
   "MODEL": "irodori-tts",
   "SOURCE_FIELD": "Sentence",
   "TARGET_FIELD": "SentenceAudio",

@@ -6,12 +6,30 @@ import re
 import unicodedata
 import urllib.request
 
+import atexit
+import shutil
+
 from aqt import mw, gui_hooks
 from aqt.operations import CollectionOp, QueryOp
-from aqt.qt import QAction
+from aqt.qt import (
+    QAction,
+    QDesktopServices,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QMenu,
+    QPlainTextEdit,
+    QProgressBar,
+    QPushButton,
+    QTimer,
+    QUrl,
+    QVBoxLayout,
+    qconnect,
+)
 from aqt.utils import askUser, showInfo, showWarning, tooltip
 
 from . import selector
+from . import server_manager as sm
 
 SOUND_RE = re.compile(r"\[sound:([^\]]+)\]")
 
@@ -116,10 +134,7 @@ def run_irodori(browser):
         tooltip("No notes selected.")
         return
     if not server_ok(c):
-        showWarning(
-            f"The Irodori server is not responding at {c['SERVER_URL']}. No notes were changed.\n"
-            "Start it first (see the add-on description for instructions)."
-        )
+        offer_server(browser, c)
         return
 
     todo = []
@@ -210,4 +225,307 @@ def setup_menu(browser):
     browser.form.menu_Cards.addAction(action)
 
 
+# ---- Local server: set up, start, stop ----
+
+_server_proc = None  # the server process this add-on started (None if it did not start one)
+GITHUB_URL = "https://github.com/mattias/anki-irodori-audio"
+
+
+def server_root(c):
+    return c.get("SERVER_DIR") or sm.default_dir()
+
+
+def can_manage(c):
+    return sm.is_local(c["SERVER_URL"])
+
+
+def voices_src():
+    return os.path.join(os.path.dirname(__file__), "voices")
+
+
+def free_space(path):
+    while path and not os.path.exists(path):
+        parent = os.path.dirname(path)
+        if parent == path:
+            break
+        path = parent
+    return shutil.disk_usage(path or os.path.expanduser("~")).free
+
+
+def stop_server():
+    global _server_proc
+    sm.stop(_server_proc)
+    _server_proc = None
+
+
+def offer_server(browser, c):
+    """Called when generation is requested but no server answers: offer to start or set it up."""
+    if not can_manage(c):
+        showWarning(
+            f"The Irodori server is not responding at {c['SERVER_URL']}. No notes were changed.\n"
+            "Start it first (see the add-on description for instructions)."
+        )
+        return
+    if sm.is_installed(server_root(c)):
+        if askUser(
+            "The Irodori server is not running.\n\nStart it now? It takes up to a minute while the voice model loads. "
+            "The generation continues afterwards."
+        ):
+            start_server_op(browser, c, then=lambda: run_irodori(browser))
+        return
+    if askUser(
+        "Irodori Audio needs a voice server that runs on your own computer, and it is not set up yet.\n\n"
+        "Set it up now? (One time, about 8 GB of downloads.)"
+    ):
+        open_setup(browser, c)
+    else:
+        showInfo(f"You can set it up later from Tools > Irodori Audio > Set up local server.\nInstructions: {GITHUB_URL}")
+
+
+def start_server_op(parent, c, then=None):
+    def op(_col):
+        return sm.start(server_root(c), c["SERVER_URL"], print, mw.progress.want_cancel)
+
+    def success(proc):
+        global _server_proc
+        if proc is not None:
+            _server_proc = proc
+        if then:
+            then()
+        else:
+            tooltip("Irodori server is running.")
+
+    def failure(err):
+        if isinstance(err, sm.Cancelled):
+            return
+        showWarning(f"Could not start the Irodori server.\n\n{err}\n\nLog: {sm.Paths(server_root(c)).log}")
+
+    QueryOp(parent=parent, op=op, success=success).failure(failure).with_progress(
+        "Starting the Irodori server (loading the voice model)..."
+    ).run_in_background()
+
+
+def auto_start():
+    c = cfg()
+    if not (c["AUTO_START_SERVER"] and can_manage(c) and sm.is_installed(server_root(c))):
+        return
+
+    def task():
+        if sm.health(c["SERVER_URL"]):
+            return None
+        return sm.start(server_root(c), c["SERVER_URL"], print, lambda: False)
+
+    def done(future):
+        global _server_proc
+        try:
+            proc = future.result()
+        except Exception as e:
+            print(f"Irodori server did not start: {e}")
+            tooltip("Irodori server could not start. See Tools > Irodori Audio > Open server log.")
+            return
+        if proc is not None:
+            _server_proc = proc
+            tooltip("Irodori server is ready.")
+
+    tooltip("Starting the Irodori server in the background...")
+    mw.taskman.run_in_background(task, done, uses_collection=False)
+
+
+def welcome():
+    c = cfg()
+    if c.get("ONBOARDING_SHOWN") or not can_manage(c) or sm.is_installed(server_root(c)) or server_ok(c):
+        return
+    c["ONBOARDING_SHOWN"] = True
+    mw.addonManager.writeConfig(__name__, c)
+    if askUser(
+        "Welcome to Irodori Audio!\n\n"
+        "It creates natural-sounding Japanese sentence audio with a voice model that runs on your own computer. "
+        "To use it, a local voice server must be installed first (one time, about 8 GB of downloads).\n\n"
+        "Set it up now? You can also do it later from Tools > Irodori Audio."
+    ):
+        open_setup(mw, c)
+
+
+class SetupDialog(QDialog):
+    def __init__(self, parent, c):
+        super().__init__(parent)
+        self.c = c
+        self.root = server_root(c)
+        self.cancel = False
+        self.setWindowTitle("Set up the Irodori server")
+        self.resize(640, 480)
+        layout = QVBoxLayout(self)
+        gpu = (
+            "An NVIDIA GPU was found, so generation will be fast."
+            if sm.detect_extra() == "cu128"
+            else "No NVIDIA GPU was found. The server will use the CPU, which works but is slow (many seconds per sentence)."
+        )
+        self.info = QLabel(
+            "This installs a local voice server that only your computer can reach (127.0.0.1).\n\n"
+            "What happens:\n"
+            "  1. Gets uv, a Python package manager (github.com/astral-sh/uv)\n"
+            "  2. Downloads the server code (github.com/Aratako/Irodori-TTS-Server)\n"
+            "  3. Installs Python packages including PyTorch, about 5 GB\n"
+            "  4. Installs ffmpeg and the six bundled voices\n"
+            "  5. Starts the server and downloads the voice model (huggingface.co, about 3 GB)\n\n"
+            f"Install folder: {self.root}\nYou need about 10 GB of free disk space and a few minutes.\n{gpu}\n\n"
+            "You can cancel and run it again later; it continues where it stopped."
+        )
+        self.info.setWordWrap(True)
+        layout.addWidget(self.info)
+        self.log = QPlainTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setVisible(False)
+        layout.addWidget(self.log, 1)
+        self.bar = QProgressBar()
+        self.bar.setVisible(False)
+        layout.addWidget(self.bar)
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        self.go = QPushButton("Install and start")
+        self.close_button = QPushButton("Cancel")
+        buttons.addWidget(self.go)
+        buttons.addWidget(self.close_button)
+        layout.addLayout(buttons)
+        qconnect(self.go.clicked, self.begin)
+        qconnect(self.close_button.clicked, self.reject)
+
+    def reject(self):
+        self.cancel = True
+        super().reject()
+
+    def begin(self):
+        free = free_space(self.root)
+        if free < 10 * (1 << 30) and not askUser(f"Only {free // (1 << 30)} GB of disk space is free. Continue anyway?"):
+            return
+        self.go.setEnabled(False)
+        self.log.setVisible(True)
+        self.bar.setVisible(True)
+        self.bar.setRange(0, sm.INSTALL_STEPS)
+        self.info.setText("Installing... Do not close Anki until this is finished.")
+        c = self.c
+
+        def log(line):
+            mw.taskman.run_on_main(lambda: self.log.appendPlainText(line))
+
+        def step(n, total, label):
+            def ui():
+                self.log.appendPlainText(f"\n== Step {n} of {total}: {label} ==")
+                self.bar.setValue(n - 1)
+                self.info.setText(f"Step {n} of {total}: {label}")
+
+            mw.taskman.run_on_main(ui)
+
+        def task():
+            if not sm.is_installed(self.root):
+                sm.install(self.root, voices_src(), log, lambda: self.cancel, step)
+            mw.taskman.run_on_main(
+                lambda: self.info.setText("Starting the server and loading the voice model (the first time it is downloaded)...")
+            )
+            log("Starting the server. The first start downloads the voice model (about 3 GB).")
+            return sm.start(self.root, c["SERVER_URL"], log, lambda: self.cancel, timeout=1800)
+
+        def done(future):
+            global _server_proc
+            self.close_button.setText("Close")
+            try:
+                proc = future.result()
+            except sm.Cancelled:
+                self.info.setText("Cancelled. You can run the setup again from Tools > Irodori Audio.")
+                self.go.setEnabled(True)
+                return
+            except Exception as e:
+                self.log.appendPlainText(f"\nERROR: {e}")
+                self.info.setText(
+                    "Something went wrong (see the log below). You can run the setup again; it continues where it stopped. "
+                    f"If it keeps failing, please open an issue at {GITHUB_URL}/issues and paste the log."
+                )
+                self.go.setEnabled(True)
+                return
+            if proc is not None:
+                _server_proc = proc
+            self.bar.setValue(self.bar.maximum())
+            self.info.setText(
+                "Done! The server is running.\n\nNow select a few notes in the card browser and use "
+                "Cards > Generate Sentence Audio (Irodori). Listen to the result before running it on many notes.\n"
+                "From now on the server starts automatically with Anki."
+            )
+
+        mw.taskman.run_in_background(task, done, uses_collection=False)
+
+
+_setup_dialog = None
+
+
+def open_setup(parent, c):
+    global _setup_dialog
+    _setup_dialog = SetupDialog(parent, c)
+    _setup_dialog.show()
+
+
+def show_status():
+    c = cfg()
+    root = server_root(c)
+    showInfo(
+        f"Server address: {c['SERVER_URL']}\n"
+        f"Installed by this add-on: {'yes' if sm.is_installed(root) else 'no'}\n"
+        f"Running: {'yes' if sm.health(c['SERVER_URL']) else 'no'}"
+        f"{' (started by this add-on)' if _server_proc is not None else ''}\n"
+        f"Install folder: {root}"
+    )
+
+
+def open_path(path):
+    if os.path.exists(path):
+        QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+    else:
+        tooltip("Nothing there yet.")
+
+
+def uninstall():
+    root = server_root(cfg())
+    paths = sm.Paths(root)
+    if not os.path.exists(paths.marker):
+        showInfo("The server was not installed by this add-on.")
+        return
+    if not askUser(
+        f"Remove the Irodori server from {root}? This frees several GB. "
+        "The voice model stays in the Hugging Face cache (.cache/huggingface in your home folder); delete it there if you want it gone."
+    ):
+        return
+    stop_server()
+    for path in (paths.server, paths.bin, paths.uv_dir):
+        shutil.rmtree(path, ignore_errors=True)
+    for path in (paths.marker, paths.log):
+        if os.path.exists(path):
+            os.remove(path)
+    showInfo("The server was removed.")
+
+
+def setup_main_menu():
+    menu = QMenu("Irodori Audio", mw)
+    mw.form.menuTools.addMenu(menu)
+    for text, fn in (
+        ("Set up local server...", lambda: open_setup(mw, cfg())),
+        ("Start server", lambda: start_server_op(mw, cfg())),
+        ("Stop server", lambda: (stop_server(), tooltip("Server stopped (if this add-on started it)."))),
+        ("Server status", show_status),
+        ("Open server log", lambda: open_path(sm.Paths(server_root(cfg())).log)),
+        ("Open server folder", lambda: open_path(server_root(cfg()))),
+        ("Remove local server...", uninstall),
+    ):
+        action = QAction(text, mw)
+        qconnect(action.triggered, fn)
+        menu.addAction(action)
+
+
+def on_profile_open():
+    auto_start()
+    QTimer.singleShot(2000, welcome)
+
+
+setup_main_menu()
 gui_hooks.browser_will_show.append(setup_menu)
+gui_hooks.profile_did_open.append(on_profile_open)
+gui_hooks.profile_will_close.append(stop_server)
+atexit.register(stop_server)
