@@ -40,7 +40,7 @@ Start the server (the first request downloads the model, about a minute):
 uv run --no-sync python -m irodori_openai_tts --host 127.0.0.1 --port 8088
 ```
 
-Or use `server/start-irodori.ps1` (Windows) or `server/start-irodori.sh` (Linux/macOS). Check it at <http://127.0.0.1:8088/health>.
+Or use `server/start-irodori.ps1 -ServerDir <your Irodori-TTS-Server folder>` (Windows) or `server/start-irodori.sh <folder>` (Linux/macOS), or copy the script into the server folder and run it there. Check it at <http://127.0.0.1:8088/health>.
 
 Measured on an RTX 4080: about 0.9 s per sentence and 4-5 GB of VRAM.
 
