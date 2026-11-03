@@ -203,22 +203,62 @@ def ensure_uv(paths, log, cancelled, use_path=True):
     raise SetupError("Could not find uv in the downloaded archive.")
 
 
-def detect_extra():
-    """cu128 when an NVIDIA GPU is present (Windows/Linux), otherwise cpu."""
-    if sys.platform != "darwin" and shutil.which("nvidia-smi"):
+def _nvidia_smi(*args):
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", *args],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            creationflags=CREATE_NO_WINDOW if IS_WINDOWS else 0,
+        )
+        return out.stdout if out.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+def gpu_capability():
+    """Highest CUDA compute capability among the NVIDIA GPUs (e.g. 8.9), or None if unknown."""
+    values = []
+    for line in _nvidia_smi("--query-gpu=compute_cap", "--format=csv,noheader").splitlines():
         try:
-            out = subprocess.run(
-                ["nvidia-smi", "-L"],
-                capture_output=True,
-                text=True,
-                timeout=15,
-                creationflags=CREATE_NO_WINDOW if IS_WINDOWS else 0,
-            )
-            if out.returncode == 0 and "GPU" in out.stdout:
-                return "cu128"
-        except Exception:
+            values.append(float(line.strip()))
+        except ValueError:
             pass
-    return "cpu"
+    return max(values) if values else None
+
+
+def detect_extra(preference="auto"):
+    """'cu128' for a supported NVIDIA GPU (Windows/Linux), otherwise 'cpu'.
+
+    The PyTorch CUDA 12.8 build has no kernels for GPUs older than compute capability 7.0
+    (GTX 10 series and older), so those use the CPU build. preference 'cpu'/'cu128' overrides.
+    """
+    if preference in ("cpu", "cu128"):
+        return preference
+    if sys.platform == "darwin" or not shutil.which("nvidia-smi") or "GPU" not in _nvidia_smi("-L"):
+        return "cpu"
+    cap = gpu_capability()
+    if cap is not None and cap < 7.0:
+        return "cpu"
+    return "cu128"
+
+
+def installed_extra(root):
+    try:
+        with open(Paths(root).marker, encoding="utf-8") as f:
+            return json.load(f).get("extra")
+    except Exception:
+        return None
+
+
+def describe_backend(extra):
+    cap = gpu_capability()
+    if extra == "cu128":
+        return "NVIDIA GPU found"
+    if cap is not None and cap < 7.0:
+        return f"your NVIDIA GPU (compute capability {cap}) is too old for the CUDA build, using the CPU, which is slow"
+    return "no supported NVIDIA GPU, using the CPU, which is slow"
 
 
 def fetch_server(paths, log, cancelled):
@@ -278,7 +318,7 @@ def install(root, voices_src, log, cancelled, step, extra=None):
     os.makedirs(root, exist_ok=True)
     extra = extra or detect_extra()
     log(f"Install folder: {root}")
-    log(f"Backend: {extra} ({'NVIDIA GPU found' if extra == 'cu128' else 'no NVIDIA GPU, using the CPU, which is slow'})")
+    log(f"Backend: {extra} ({describe_backend(extra)})")
 
     step(1, INSTALL_STEPS, "Getting uv")
     uv = ensure_uv(paths, log, cancelled)
@@ -321,9 +361,15 @@ def is_local(url):
 def log_tail(paths, n=12):
     try:
         with open(paths.log, encoding="utf-8", errors="replace") as f:
-            return "".join(f.readlines()[-n:])
+            text = "".join(f.readlines()[-n:])
     except Exception:
         return ""
+    if "no kernel image" in text:
+        text += (
+            "\nYour GPU is not supported by the CUDA build of PyTorch. "
+            "Set BACKEND to \"cpu\" in the add-on config and run Tools > Irodori Audio > Set up local server again."
+        )
+    return text
 
 
 def start(root, url, log, cancelled, timeout=900):

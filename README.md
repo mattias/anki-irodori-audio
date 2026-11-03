@@ -54,6 +54,7 @@ Settings are in *Tools > Add-ons > Irodori Audio > Config*: field names, audio f
 | "The Irodori server is not running" | Accept the offer to start it, or use *Tools > Irodori Audio > Start server*. If it fails, use *Open server log*. |
 | The first start takes minutes | The voice model is downloaded and loaded the first time. Later starts take up to a minute. |
 | "CUDA out of memory" or the server crashes | Close other GPU programs (games, other AI tools) and start the server again. |
+| `no kernel image is available for execution on the device` | Your NVIDIA GPU is too old for the CUDA build of PyTorch (GTX 10 series and older). Update the add-on (it now detects this and uses the CPU), or set `BACKEND` to `cpu` in the config and run *Set up local server* again. |
 | Generation is very slow | Check *Server status*. Without an NVIDIA GPU the CPU is used and each sentence takes many seconds. |
 | Notes are skipped | Notes that already have recorded audio are never replaced. The dialog shows the reasons. Check that the field names in the config match your note type. |
 | The voice reads a name or word wrongly | Pronunciation cannot be corrected. Leave that note alone or keep your own audio. |

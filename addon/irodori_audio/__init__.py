@@ -355,10 +355,11 @@ class SetupDialog(QDialog):
         self.setWindowTitle("Set up the Irodori server")
         self.resize(640, 480)
         layout = QVBoxLayout(self)
+        self.extra = sm.detect_extra(c["BACKEND"])
         gpu = (
             "An NVIDIA GPU was found, so generation will be fast."
-            if sm.detect_extra() == "cu128"
-            else "No NVIDIA GPU was found. The server will use the CPU, which works but is slow (many seconds per sentence)."
+            if self.extra == "cu128"
+            else f"The server will use the CPU, which works but is slow (many seconds per sentence): {sm.describe_backend(self.extra)}."
         )
         self.info = QLabel(
             "This installs a local voice server that only your computer can reach (127.0.0.1).\n\n"
@@ -417,8 +418,8 @@ class SetupDialog(QDialog):
             mw.taskman.run_on_main(ui)
 
         def task():
-            if not sm.is_installed(self.root):
-                sm.install(self.root, voices_src(), log, lambda: self.cancel, step)
+            if not sm.is_installed(self.root) or sm.installed_extra(self.root) != self.extra:
+                sm.install(self.root, voices_src(), log, lambda: self.cancel, step, extra=self.extra)
             mw.taskman.run_on_main(
                 lambda: self.info.setText("Starting the server and loading the voice model (the first time it is downloaded)...")
             )
