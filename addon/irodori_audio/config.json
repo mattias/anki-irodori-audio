@@ -2,6 +2,7 @@
   "SERVER_URL": "http://127.0.0.1:8088",
   "SERVER_DIR": "",
   "AUTO_START_SERVER": true,
+  "IDLE_MINUTES": 10,
   "BACKEND": "auto",
   "ONBOARDING_SHOWN": false,
   "MODEL": "irodori-tts",

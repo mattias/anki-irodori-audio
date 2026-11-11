@@ -5,7 +5,7 @@
 <li>Browser menu: <i>Cards &gt; Generate Sentence Audio (Irodori)</i>. Reads <code>Sentence</code> and writes <code>SentenceAudio</code> (field names are configurable).</li>
 <li>6 voices (3 female, 3 male) and 7 emotions: neutral, happy, sad, angry, scared, whisper, joking.</li>
 <li>Male or female voice and emotion are chosen automatically by simple rules (speech style such as 俺, ぼく, だぜ, わよ, keywords, punctuation). No extra AI model needed.</li>
-<li>Guided one-time setup of the voice server, which then starts and stops with Anki.</li>
+<li>Guided one-time setup of the voice server, which then starts and stops with Anki. When you do not use it for 10 minutes it stops by itself and frees the GPU memory, and it starts again when you need it.</li>
 <li>Safe: recorded audio is never replaced, <code>Sentence</code> is never changed, old files are kept, one undo reverts a run, and nothing changes if the server is down.</li>
 <li>Background generation with progress and cancel. Notes that get audio are tagged <code>irodori</code>.</li>
 </ul>
@@ -17,12 +17,12 @@
 <li>Select 3-5 notes in the card browser and run <i>Cards &gt; Generate Sentence Audio (Irodori)</i>. Listen to the result before running it on many notes.</li>
 </ol>
 <p>An NVIDIA GPU with about 6 GB of free VRAM is recommended (about 1 second per sentence). Without one it runs on the CPU, which works but is slow.</p>
-<p>From then on the server starts automatically with Anki. The server listens only on 127.0.0.1, so everything stays on your computer. Everything is installed into one folder (on Windows <code>%LOCALAPPDATA%\IrodoriAudio</code>) and <i>Tools &gt; Irodori Audio &gt; Remove local server</i> removes it again.</p>
+<p>From then on the server starts automatically with Anki and stops after 10 minutes without use (setting <code>IDLE_MINUTES</code>, <code>0</code> = never), so the GPU memory is free for games and other programs. It starts again by itself the next time you generate audio. The server listens only on 127.0.0.1, so everything stays on your computer. Everything is installed into one folder (on Windows <code>%LOCALAPPDATA%\IrodoriAudio</code>) and <i>Tools &gt; Irodori Audio &gt; Remove local server</i> removes it again.</p>
 
 <h3>Troubleshooting</h3>
 <ul>
 <li><b>Setup fails:</b> read the last lines of the log in the setup window and run the setup again; it continues where it stopped. If it keeps failing, open an issue and paste the log. A firewall or antivirus may block downloads from github.com, pypi.org, download.pytorch.org or huggingface.co.</li>
-<li><b>"The Irodori server is not running":</b> accept the offer to start it, or use <i>Tools &gt; Irodori Audio &gt; Start server</i>. <i>Open server log</i> shows what went wrong.</li>
+<li><b>The server does not start:</b> use <i>Tools &gt; Irodori Audio &gt; Start server</i>. <i>Open server log</i> shows what went wrong.</li>
 <li><b>First start takes minutes:</b> the voice model is downloaded and loaded the first time.</li>
 <li><b>Notes are skipped:</b> notes with recorded audio are never replaced. Check that the field names in the add-on config match your note type.</li>
 </ul>

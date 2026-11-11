@@ -78,11 +78,13 @@ def clean_env(extra_path=None):
     return env
 
 
-def kill_tree(proc):
+def kill_tree(proc, wait=15):
+    """Kill proc and all its children (on Windows the venv launcher and the real python.exe), then wait for it."""
     if proc.poll() is not None:
         return
     try:
         if IS_WINDOWS:
+            # /T walks the tree from proc, so this must run while the launcher is still alive
             subprocess.run(
                 ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
                 capture_output=True,
@@ -91,11 +93,19 @@ def kill_tree(proc):
             )
         else:
             os.killpg(proc.pid, signal.SIGTERM)
+            try:
+                proc.wait(timeout=wait)
+            except subprocess.TimeoutExpired:
+                os.killpg(proc.pid, signal.SIGKILL)
     except Exception:
         try:
             proc.kill()
         except Exception:
             pass
+    try:
+        proc.wait(timeout=wait)
+    except Exception:
+        pass
 
 
 def run(cmd, cwd, env, log, cancelled):
@@ -372,8 +382,47 @@ def log_tail(paths, n=12):
     return text
 
 
-def start(root, url, log, cancelled, timeout=900):
-    """Start the server on 127.0.0.1 and wait until it answers. Returns the process (None if one already runs)."""
+# Runs the server in the real Python process (on Windows the venv python.exe is only a launcher that
+# starts the base interpreter as a child) and ends it when the parent process (Anki) is gone, so a crash
+# of Anki does not leave the voice model in memory.
+WATCHDOG = r"""
+import os, sys, threading, runpy
+ppid = int(os.environ.pop("IRODORI_PARENT_PID", "0") or 0)
+def watch():
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+        k = ctypes.WinDLL("kernel32", use_last_error=True)
+        k.OpenProcess.restype = wintypes.HANDLE
+        k.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        k.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+        h = k.OpenProcess(0x00100000, False, ppid)  # SYNCHRONIZE
+        if h:
+            k.WaitForSingleObject(h, 0xFFFFFFFF)
+    else:
+        import time
+        while True:
+            try:
+                os.kill(ppid, 0)
+            except ProcessLookupError:
+                break
+            except PermissionError:
+                pass
+            time.sleep(2)
+    print("The parent process is gone, stopping the server.", flush=True)
+    os._exit(0)
+if ppid:
+    threading.Thread(target=watch, daemon=True).start()
+sys.argv = ["irodori_openai_tts"] + sys.argv[1:]
+runpy.run_module("irodori_openai_tts", run_name="__main__", alter_sys=True)
+"""
+
+
+def start(root, url, log, cancelled, timeout=900, parent_pid=None):
+    """Start the server on 127.0.0.1 and wait until it answers. Returns the process (None if one already runs).
+
+    The server ends by itself when the process parent_pid (default: this process, i.e. Anki) is gone.
+    """
     paths = Paths(root)
     if health(url):
         return None
@@ -381,7 +430,8 @@ def start(root, url, log, cancelled, timeout=900):
         raise SetupError("The server is not installed yet.")
     env = clean_env(paths.bin)
     env["IRODORI_PRELOAD"] = "true"  # load the model at startup so the first sentence is fast
-    cmd = [paths.venv_python, "-m", "irodori_openai_tts", "--host", "127.0.0.1", "--port", str(port_of(url))]
+    env["IRODORI_PARENT_PID"] = str(parent_pid or os.getpid())
+    cmd = [paths.venv_python, "-c", WATCHDOG, "--host", "127.0.0.1", "--port", str(port_of(url))]
     logfile = open(paths.log, "w", encoding="utf-8")
     kwargs = {"creationflags": CREATE_NO_WINDOW} if IS_WINDOWS else {"start_new_session": True}
     proc = subprocess.Popen(

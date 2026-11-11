@@ -25,7 +25,7 @@ You need Anki 2.1.50 or newer, an internet connection for the one-time setup, ab
 
 Notes with new audio get the tag `irodori`. *Edit > Undo* reverts a whole run.
 
-From then on the server starts automatically when Anki starts and stops when Anki closes. If it is not running when you generate audio, the add-on offers to start it. Starting takes up to a minute while the voice model loads.
+From then on the server starts automatically when Anki starts and stops when Anki closes. After 10 minutes without generating audio it also stops by itself, so the GPU memory (about 4 GB) is free for other programs such as games or other local AI models. The next time you generate audio, the add-on starts it again by itself; that takes up to a minute while the voice model loads. If Anki crashes, the server notices and stops too.
 
 ### What the setup installs
 
@@ -43,7 +43,7 @@ The server listens only on `127.0.0.1`, so other computers cannot reach it. All 
 
 *Tools > Irodori Audio* has: Set up local server, Start server, Stop server, Server status, Open server log, Open server folder, and Remove local server (frees the disk space; the model stays in the Hugging Face cache).
 
-Settings are in *Tools > Add-ons > Irodori Audio > Config*: field names, audio format, overwrite behavior, voices, emotion captions, the install folder (`SERVER_DIR`) and whether the server starts with Anki (`AUTO_START_SERVER`).
+Settings are in *Tools > Add-ons > Irodori Audio > Config*: field names, audio format, overwrite behavior, voices, emotion captions, the install folder (`SERVER_DIR`), whether the server starts with Anki (`AUTO_START_SERVER`) and after how many minutes without use it stops (`IDLE_MINUTES`, default 10, `0` = never).
 
 ## Troubleshooting
 
@@ -51,7 +51,7 @@ Settings are in *Tools > Add-ons > Irodori Audio > Config*: field names, audio f
 |---|---|
 | The setup fails | Read the last lines of the log in the setup window. Run the setup again; it continues where it stopped. If it keeps failing, open an [issue](https://github.com/mattias/anki-irodori-audio/issues) and paste the log. |
 | A firewall or antivirus blocks the downloads | Allow Anki to download from github.com, pypi.org, download.pytorch.org and huggingface.co, or use the manual setup below. |
-| "The Irodori server is not running" | Accept the offer to start it, or use *Tools > Irodori Audio > Start server*. If it fails, use *Open server log*. |
+| The server does not start | Use *Tools > Irodori Audio > Start server*. If it fails, use *Open server log*. |
 | The first start takes minutes | The voice model is downloaded and loaded the first time. Later starts take up to a minute. |
 | "CUDA out of memory" or the server crashes | Close other GPU programs (games, other AI tools) and start the server again. |
 | `no kernel image is available for execution on the device` | Your NVIDIA GPU is too old for the CUDA build of PyTorch (GTX 10 series and older). Update the add-on (it now detects this and uses the CPU), or set `BACKEND` to `cpu` in the config and run *Set up local server* again. |

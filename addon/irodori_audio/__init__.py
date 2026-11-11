@@ -3,6 +3,7 @@ import html
 import json
 import os
 import re
+import time
 import unicodedata
 import urllib.request
 
@@ -170,13 +171,23 @@ def run_irodori(browser):
 
     media_dir = mw.col.media.dir()
     ext = c["AUDIO_FORMAT"]
+    global _busy
+    _busy += 1  # keeps the idle timer from stopping the server during the run
+    touch()
 
     def work(col):
+        try:
+            return generate()
+        finally:
+            touch()
+
+    def generate():
         done, failed = [], []
         total = len(todo)
         for i, (nid, text) in enumerate(todo):
             if mw.progress.want_cancel():
                 break
+            touch()
             mw.taskman.run_on_main(
                 lambda i=i: mw.progress.update(label=f"Irodori: {i + 1} of {total}", value=i, max=total)
             )
@@ -195,6 +206,8 @@ def run_irodori(browser):
         return done, failed
 
     def on_done(result):
+        global _busy
+        _busy -= 1
         done, failed = result
         if not done:
             showWarning(f"No audio was created. {len(failed)} notes failed (see the console).")
@@ -215,7 +228,14 @@ def run_irodori(browser):
 
         CollectionOp(browser, write).success(finished).run_in_background()
 
-    QueryOp(parent=browser, op=work, success=on_done).with_progress("Generating audio with Irodori...").run_in_background()
+    def on_failure(err):
+        global _busy
+        _busy -= 1
+        showWarning(f"Irodori audio failed: {err}")
+
+    QueryOp(parent=browser, op=work, success=on_done).failure(on_failure).with_progress(
+        "Generating audio with Irodori..."
+    ).run_in_background()
 
 
 def setup_menu(browser):
@@ -228,6 +248,9 @@ def setup_menu(browser):
 # ---- Local server: set up, start, stop ----
 
 _server_proc = None  # the server process this add-on started (None if it did not start one)
+_last_use = 0.0  # time.time() of the last audio generation (or server start)
+_busy = 0  # generations running right now; the server is never stopped while one runs
+_idle_timer = None
 GITHUB_URL = "https://github.com/mattias/anki-irodori-audio"
 
 
@@ -258,6 +281,53 @@ def stop_server():
     _server_proc = None
 
 
+def touch():
+    global _last_use
+    _last_use = time.time()
+
+
+def set_server(proc):
+    """Remember a server process this add-on started (None: another server already answered)."""
+    global _server_proc
+    if proc is not None:
+        _server_proc = proc
+    touch()
+
+
+def idle_minutes(c):
+    try:
+        return max(0.0, float(c.get("IDLE_MINUTES", 10) or 0))
+    except (TypeError, ValueError):
+        return 10.0
+
+
+def check_idle():
+    """Stop the server this add-on started when no audio was made for IDLE_MINUTES, to free the GPU memory.
+
+    A server started by someone else is never touched (_server_proc is None then).
+    """
+    global _server_proc
+    if _server_proc is None or _busy:
+        return
+    if _server_proc.poll() is not None:  # it ended by itself
+        _server_proc = None
+        return
+    minutes = idle_minutes(cfg())
+    if not minutes or time.time() - _last_use < minutes * 60:
+        return
+    stop_server()
+    print(f"Irodori server stopped after {minutes:g} idle minutes.")
+    tooltip("Irodori server stopped to free GPU memory. It starts again when you generate audio.")
+
+
+def start_idle_timer():
+    global _idle_timer
+    if _idle_timer is None:
+        _idle_timer = QTimer(mw)
+        qconnect(_idle_timer.timeout, check_idle)
+        _idle_timer.start(30 * 1000)
+
+
 def offer_server(browser, c):
     """Called when generation is requested but no server answers: offer to start or set it up."""
     if not can_manage(c):
@@ -267,11 +337,8 @@ def offer_server(browser, c):
         )
         return
     if sm.is_installed(server_root(c)):
-        if askUser(
-            "The Irodori server is not running.\n\nStart it now? It takes up to a minute while the voice model loads. "
-            "The generation continues afterwards."
-        ):
-            start_server_op(browser, c, then=lambda: run_irodori(browser))
+        # installed but not running (stopped when idle, or not started with Anki): start it without asking
+        start_server_op(browser, c, then=lambda: run_irodori(browser))
         return
     if askUser(
         "Irodori Audio needs a voice server that runs on your own computer, and it is not set up yet.\n\n"
@@ -287,9 +354,7 @@ def start_server_op(parent, c, then=None):
         return sm.start(server_root(c), c["SERVER_URL"], print, mw.progress.want_cancel)
 
     def success(proc):
-        global _server_proc
-        if proc is not None:
-            _server_proc = proc
+        set_server(proc)
         if then:
             then()
         else:
@@ -316,15 +381,14 @@ def auto_start():
         return sm.start(server_root(c), c["SERVER_URL"], print, lambda: False)
 
     def done(future):
-        global _server_proc
         try:
             proc = future.result()
         except Exception as e:
             print(f"Irodori server did not start: {e}")
             tooltip("Irodori server could not start. See Tools > Irodori Audio > Open server log.")
             return
+        set_server(proc)
         if proc is not None:
-            _server_proc = proc
             tooltip("Irodori server is ready.")
 
     tooltip("Starting the Irodori server in the background...")
@@ -427,7 +491,6 @@ class SetupDialog(QDialog):
             return sm.start(self.root, c["SERVER_URL"], log, lambda: self.cancel, timeout=1800)
 
         def done(future):
-            global _server_proc
             self.close_button.setText("Close")
             try:
                 proc = future.result()
@@ -443,13 +506,13 @@ class SetupDialog(QDialog):
                 )
                 self.go.setEnabled(True)
                 return
-            if proc is not None:
-                _server_proc = proc
+            set_server(proc)
             self.bar.setValue(self.bar.maximum())
             self.info.setText(
                 "Done! The server is running.\n\nNow select a few notes in the card browser and use "
                 "Cards > Generate Sentence Audio (Irodori). Listen to the result before running it on many notes.\n"
-                "From now on the server starts automatically with Anki."
+                "From now on the server starts by itself when needed and stops after a while without use, "
+                "so the GPU memory is free for other programs (see IDLE_MINUTES in the add-on config)."
             )
 
         mw.taskman.run_in_background(task, done, uses_collection=False)
@@ -472,8 +535,20 @@ def show_status():
         f"Installed by this add-on: {'yes' if sm.is_installed(root) else 'no'}\n"
         f"Running: {'yes' if sm.health(c['SERVER_URL']) else 'no'}"
         f"{' (started by this add-on)' if _server_proc is not None else ''}\n"
+        f"{idle_text(c)}"
         f"Install folder: {root}"
     )
+
+
+def idle_text(c):
+    minutes = idle_minutes(c)
+    if not minutes:
+        return "Stops when idle: never\n"
+    left = ""
+    if _server_proc is not None and not _busy:
+        rest = minutes * 60 - (time.time() - _last_use)
+        left = f" (in about {max(0, round(rest / 60))} min)"
+    return f"Stops when idle: after {minutes:g} minutes without audio{left}\n"
 
 
 def open_path(path):
@@ -521,6 +596,7 @@ def setup_main_menu():
 
 
 def on_profile_open():
+    start_idle_timer()
     auto_start()
     QTimer.singleShot(2000, welcome)
 

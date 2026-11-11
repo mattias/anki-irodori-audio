@@ -4,7 +4,8 @@ Use it from the card browser: select notes, then *Cards > Generate Sentence Audi
 
 - `SERVER_URL`: the Irodori-TTS server (keep it on 127.0.0.1). If a server already answers there, the add-on uses it and does not start its own.
 - `SERVER_DIR`: install folder for the local server. Empty = the default folder in your local data directory.
-- `AUTO_START_SERVER`: start the installed server when Anki starts. Default `true`.
+- `AUTO_START_SERVER`: start the installed server when Anki starts. Default `true`. When it is not running, the add-on starts it by itself the next time you generate audio.
+- `IDLE_MINUTES`: stop the server this add-on started after this many minutes without generating audio, so the GPU memory (several GB) is free for other programs. It starts again by itself the next time you generate audio. Default `10`. `0` = never stop. A server started by someone else is never stopped.
 - `BACKEND`: `auto` (default), `cpu` or `cu128`. `auto` uses the CUDA build for NVIDIA GPUs of compute capability 7.0 or newer (GTX 16 and RTX series) and the CPU build otherwise. Change it and run *Set up local server* again to reinstall.
 - `ONBOARDING_SHOWN`: set to `true` once the welcome dialog has been shown. Set it to `false` to see it again.
 - `SOURCE_FIELD` / `TARGET_FIELD`: field names (default `Sentence` / `SentenceAudio`).
